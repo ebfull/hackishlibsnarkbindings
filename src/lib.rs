@@ -30,3 +30,14 @@ fn lol() {
 
     let b = FieldT::random();
 }
+
+#[test]
+fn test_from() {
+    use arith::*;
+
+    let a = FieldT::one() + FieldT::one() + FieldT::one() + FieldT::one();
+    let b = FieldT::from_str("4").unwrap();
+
+    assert!(a == b);
+    assert!(a + FieldT::one() != b);
+}

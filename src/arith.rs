@@ -1,5 +1,8 @@
 use super::initialize;
+use libc::c_char;
 use std::ops::{Mul,Add,Sub,Neg};
+use std::fmt;
+use std::ffi::CString;
 use rustc_serialize::{Encodable,Encoder,Decodable,Decoder};
 
 type Bigint = [u64; 4];
@@ -14,6 +17,8 @@ extern "C" {
     fn tinysnark_fieldt_sub(a: *const Bigint, b: *const Bigint) -> Bigint;
     fn tinysnark_fieldt_neg(a: *const Bigint) -> Bigint;
     fn tinysnark_fieldt_inverse(a: *const Bigint) -> Bigint;
+
+    fn tinysnark_fieldt_from(s: *const c_char) -> Bigint;
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -74,6 +79,27 @@ impl FieldT {
 
     pub fn inverse(&self) -> Self {
         FieldT(unsafe { tinysnark_fieldt_inverse(&self.0) })
+    }
+
+    pub fn from_str<T: fmt::Display>(s: T) -> Option<Self> {
+        let s = format!("{}", s);
+        for c in s.chars() {
+            if c != '0' &&
+               c != '1' &&
+               c != '2' &&
+               c != '3' &&
+               c != '4' &&
+               c != '5' &&
+               c != '6' &&
+               c != '7' &&
+               c != '8' &&
+               c != '9' {
+                return None;
+            }
+        }
+
+        let s = CString::new(s).unwrap();
+        Some(FieldT(unsafe { tinysnark_fieldt_from(s.as_ptr()) }))
     }
 }
 

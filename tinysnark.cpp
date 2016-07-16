@@ -44,3 +44,7 @@ extern "C" FieldT tinysnark_fieldt_neg(const FieldT *a) {
 extern "C" FieldT tinysnark_fieldt_inverse(const FieldT *a) {
     return a->inverse();
 }
+
+extern "C" FieldT tinysnark_fieldt_from(const char *a) {
+    return FieldT(a);
+}
