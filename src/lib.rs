@@ -13,6 +13,7 @@ mod arith;
 
 extern "C" {
     fn tinysnark_init();
+    fn tinysnark_test() -> bool;
 }
 
 pub fn initialize() {
@@ -40,4 +41,11 @@ fn test_from() {
 
     assert!(a == b);
     assert!(a + FieldT::one() != b);
+}
+
+#[test]
+fn test_dummy_circuit() {
+    initialize();
+
+    assert!(unsafe { tinysnark_test() });
 }

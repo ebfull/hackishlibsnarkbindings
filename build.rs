@@ -12,13 +12,11 @@ fn main() {
         .define("STATIC", None)
         .define("CURVE_ALT_BN128", None)
         .define("MONTGOMERY_OUTPUT", None)
-        .define("MULTICORE", None)
         .define("USE_ASM", None)
         .define("NO_PT_COMPRESSION", None)
         .define("BINARY_OUTPUT", None)
         .flag("-std=c++11")
         .include("libsnark/src")
-        .file("tinysnark.cpp")
         .file("libsnark/src/algebra/curves/alt_bn128/alt_bn128_g1.cpp")
         .file("libsnark/src/algebra/curves/alt_bn128/alt_bn128_g2.cpp")
         .file("libsnark/src/algebra/curves/alt_bn128/alt_bn128_init.cpp")
@@ -26,6 +24,7 @@ fn main() {
         .file("libsnark/src/algebra/curves/alt_bn128/alt_bn128_pp.cpp")
         .file("libsnark/src/common/utils.cpp")
         .file("libsnark/src/common/profiling.cpp")
+        .file("tinysnark.cpp")
     ;
     
     cfg.compile("libtinysnark.a");
