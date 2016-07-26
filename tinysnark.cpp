@@ -3,6 +3,7 @@
 #include "zk_proof_systems/ppzksnark/r1cs_ppzksnark/r1cs_ppzksnark.hpp"
 #include "common/utils.hpp"
 #include "gadgetlib1/gadgets/hashes/sha256/sha256_gadget.hpp"
+#include "gadgetlib1/gadgets/merkle_tree/merkle_tree_check_read_gadget.hpp"
 #include "sodium.h"
 
 using namespace libsnark;
@@ -57,85 +58,213 @@ extern "C" FieldT tinysnark_fieldt_from(const char *a) {
 Dummy Circuit
 **/
 
-template<typename ppT>
-class DummyCircuit {
+uint64_t convertVectorToInt(const std::vector<bool>& v) {
+    if (v.size() > 64) {
+        throw std::length_error ("boolean vector can't be larger than 64 bits");
+    }
+
+    uint64_t result = 0;
+    for (size_t i=0; i<v.size();i++) {
+        if (v.at(i)) {
+            result |= (uint64_t)1 << ((v.size() - 1) - i);
+        }
+    }
+
+    return result;
+}
+
+class MerklePath {
+public:
+    std::vector<std::vector<bool>> authentication_path;
+    std::vector<bool> index;
+
+    MerklePath() { }
+
+    MerklePath(std::vector<std::vector<bool>> authentication_path, std::vector<bool> index)
+    : authentication_path(authentication_path), index(index) { }
+};
+
+template<typename ppT, size_t TREEDEPTH>
+class MiniZerocashCircuit {
 public:
     protoboard<Fr<ppT>> pb;
     pb_variable_array<Fr<ppT>> packed_inputs;
+    pb_variable_array<Fr<ppT>> unpacked_inputs;
     std::shared_ptr<multipacking_gadget<Fr<ppT>>> unpacker;
-    pb_variable<FieldT> ZERO;
+    pb_variable<Fr<ppT>> ZERO;
 
-    std::shared_ptr<digest_variable<Fr<ppT>>> image;
-    pb_variable_array<Fr<ppT>> preimage;
-    std::shared_ptr<sha256_compression_function_gadget<Fr<ppT>>> hash;
+    std::shared_ptr<digest_variable<Fr<ppT>>> nullifier;
+    std::shared_ptr<digest_variable<Fr<ppT>>> addr;
+    std::shared_ptr<digest_variable<Fr<ppT>>> anchor;
+    std::shared_ptr<digest_variable<Fr<ppT>>> mac;
 
-    DummyCircuit() {
-        packed_inputs.allocate(pb, 2);
-        pb.set_input_sizes(2);
+    pb_variable_array<Fr<ppT>> sk;
+    std::shared_ptr<digest_variable<Fr<ppT>>> cm;
+
+    std::shared_ptr<sha256_compression_function_gadget<Fr<ppT>>> mac_hash;
+    std::shared_ptr<sha256_compression_function_gadget<Fr<ppT>>> cm_hash;
+
+    pb_variable_array<Fr<ppT>> positions;
+    std::shared_ptr<merkle_authentication_path_variable<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>> authvars;
+    std::shared_ptr<merkle_tree_check_read_gadget<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>> auth;
+
+    MiniZerocashCircuit() {
+        packed_inputs.allocate(pb, 4 + 1);
+        pb.set_input_sizes(4 + 1);
 
         ZERO.allocate(pb);
 
-        image.reset(new digest_variable<Fr<ppT>>(pb, 256, "image"));
+        nullifier.reset(new digest_variable<Fr<ppT>>(pb, 256, "nullifier"));
+        addr.reset(new digest_variable<Fr<ppT>>(pb, 256, "addr"));
+        anchor.reset(new digest_variable<Fr<ppT>>(pb, 256, "anchor"));
+        mac.reset(new digest_variable<Fr<ppT>>(pb, 256, "mac"));
+
+        unpacked_inputs.insert(unpacked_inputs.end(), nullifier->bits.begin(), nullifier->bits.end());
+        unpacked_inputs.insert(unpacked_inputs.end(), addr->bits.begin(), addr->bits.end());
+        unpacked_inputs.insert(unpacked_inputs.end(), anchor->bits.begin(), anchor->bits.end());
+        unpacked_inputs.insert(unpacked_inputs.end(), mac->bits.begin(), mac->bits.end());
 
         unpacker.reset(new multipacking_gadget<Fr<ppT>>(
             pb,
-            image->bits,
+            unpacked_inputs,
             packed_inputs,
             Fr<ppT>::capacity(),
             "unpacker"
         ));
-        unpacker->generate_r1cs_constraints(false);
 
-        preimage.allocate(pb, 256);
-
-        bool sha256_padding[256] = {1,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-                                    0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,1, 0,0,0,0,0,0,0,0};
-
-        for (size_t i = 0; i < 256; i++) {
-            preimage.emplace_back(sha256_padding[i] ? ONE : ZERO);
-        }
+        // AUTHENTICATION
+        sk.allocate(pb, 256);
 
         auto IV = SHA256_default_IV(pb);
-        hash.reset(new sha256_compression_function_gadget<Fr<ppT>>(pb,
-                                                                  IV,
-                                                                  preimage,
-                                                                  *image,
-                                                                  "sha256"));
 
+        // Note commitment
+        pb_variable_array<Fr<ppT>> cm_hash_contents;
+        cm_hash_contents.insert(cm_hash_contents.begin(), sk.begin(), sk.end());
+        cm_hash_contents.insert(cm_hash_contents.begin(), nullifier->bits.begin(), nullifier->bits.end());
 
+        cm.reset(new digest_variable<Fr<ppT>>(pb, 256, "cm"));
+        cm_hash.reset(new sha256_compression_function_gadget<Fr<ppT>>(pb,
+                                                                      IV,
+                                                                      cm_hash_contents,
+                                                                      *cm,
+                                                                      "cm_hash"));
+
+        // MAC
+        pb_variable_array<Fr<ppT>> mac_hash_contents;
+        mac_hash_contents.insert(mac_hash_contents.begin(), addr->bits.begin(), addr->bits.end());
+        mac_hash_contents.insert(mac_hash_contents.begin(), sk.begin(), sk.end());
+
+        mac_hash.reset(new sha256_compression_function_gadget<Fr<ppT>>(pb,
+                                                                      IV,
+                                                                      mac_hash_contents,
+                                                                      *mac,
+                                                                      "mac_hash"));
+
+        // merkle tree
+        positions.allocate(pb, TREEDEPTH);
+        authvars.reset(new merkle_authentication_path_variable<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>(
+            pb, TREEDEPTH, "auth"
+        ));
+        auth.reset(new merkle_tree_check_read_gadget<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>(
+            pb,
+            TREEDEPTH,
+            positions,
+            *cm,
+            *anchor,
+            *authvars,
+            ONE,
+            ""
+        ));
+
+        // constraints
+        unpacker->generate_r1cs_constraints(false);
         generate_r1cs_equals_const_constraint<Fr<ppT>>(pb, ZERO, Fr<ppT>::zero(), "ZERO");
-        
+
         for (size_t i = 0; i < 256; i++) {
-            generate_boolean_r1cs_constraint<Fr<ppT>>(pb, preimage[i]);
+            generate_boolean_r1cs_constraint<Fr<ppT>>(pb, sk[i]);
         }
-        hash->generate_r1cs_constraints();
+
+        cm_hash->generate_r1cs_constraints();
+        mac_hash->generate_r1cs_constraints();
+
+        for (size_t i = 0; i < TREEDEPTH; i++) {
+            generate_boolean_r1cs_constraint<Fr<ppT>>(
+                pb,
+                positions[i],
+                "boolean_positions"
+            );
+        }
+
+        authvars->generate_r1cs_constraints();
+        auth->generate_r1cs_constraints();
     }
 
     r1cs_ppzksnark_keypair<ppT> keypair() {
         return r1cs_ppzksnark_generator<ppT>(pb.constraint_system);
     }
 
-    r1cs_ppzksnark_proof<ppT> prove(unsigned char preimage_bytes[32], const r1cs_ppzksnark_proving_key<ppT> &pk) {
-        bool preimage_bits[256];
+    r1cs_ppzksnark_proof<ppT> prove(const std::vector<unsigned char> sk_bytes,
+                                    const std::vector<unsigned char> nullifier_bytes,
+                                    const std::vector<unsigned char> addr_bytes,
+                                    const MerklePath &path,
+                                    const r1cs_ppzksnark_proving_key<ppT> &pk) {
+        assert(sk_bytes.size() == 32);
+        assert(nullifier_bytes.size() == 32);
+        assert(addr_bytes.size() == 32);
+        
+        // sk
+        {
+            bool bits[256];
+            for (size_t i = 0; i < 32; i++) {
+                for (size_t j = 0; j < 8; j++) {
+                    bits[(i*8)+j] = (sk_bytes[i] >> (7-j)) & 1;
+                }
+            }
 
-        for (size_t i = 0; i < 32; i++) {
-            for (size_t j = 0; j < 8; j++) {
-                preimage_bits[(i*8)+j] = (preimage_bytes[i] >> (7-j)) & 1;
+            for (size_t i = 0; i < 256; i++) {
+                pb.val(sk[i]) = bits[i] ? Fr<ppT>::one() : Fr<ppT>::zero();
             }
         }
 
-        for (size_t i = 0; i < 256; i++) {
-            pb.val(preimage[i]) = preimage_bits[i] ? Fr<ppT>::one() : Fr<ppT>::zero();
+        // nullifier
+        {
+            bool bits[256];
+            for (size_t i = 0; i < 32; i++) {
+                for (size_t j = 0; j < 8; j++) {
+                    bits[(i*8)+j] = (nullifier_bytes[i] >> (7-j)) & 1;
+                }
+            }
+
+            for (size_t i = 0; i < 256; i++) {
+                pb.val(nullifier->bits[i]) = bits[i] ? Fr<ppT>::one() : Fr<ppT>::zero();
+            }
         }
 
-        hash->generate_r1cs_witness();
-        unpacker->generate_r1cs_witness_from_bits();
+        // addr
+        {
+            bool bits[256];
+            for (size_t i = 0; i < 32; i++) {
+                for (size_t j = 0; j < 8; j++) {
+                    bits[(i*8)+j] = (addr_bytes[i] >> (7-j)) & 1;
+                }
+            }
+
+            for (size_t i = 0; i < 256; i++) {
+                pb.val(addr->bits[i]) = bits[i] ? Fr<ppT>::one() : Fr<ppT>::zero();
+            }
+        }
+
+        cm_hash->generate_r1cs_witness();
+        mac_hash->generate_r1cs_witness();
+
+        // merkle tree auth
+        {
+            size_t path_index = convertVectorToInt(path.index);
+            positions.fill_with_bits_of_ulong(this->pb, path_index);
+
+            authvars->generate_r1cs_witness(path_index, path.authentication_path);
+            auth->generate_r1cs_witness();
+        }
 
         assert(pb.is_satisfied());
 
@@ -147,11 +276,36 @@ public:
         return r1cs_ppzksnark_prover<ppT>(pk, primary_input, aux_input, pb.constraint_system);
     }
 
-    static vector<Fr<ppT>> witness_map(unsigned char image_bytes[32]) {
-        vector<bool> bits(256);
+    static vector<Fr<ppT>> witness_map(
+        std::vector<unsigned char> nf_bytes,
+        std::vector<unsigned char> addr_bytes,
+        std::vector<unsigned char> anchor_bytes,
+        std::vector<unsigned char> mac_bytes
+    ) {
+        assert(nf_bytes.size() == 32);
+        assert(addr_bytes.size() == 32);
+        assert(anchor_bytes.size() == 32);
+        assert(mac_bytes.size() == 32);
+
+        vector<bool> bits(256 * 4);
         for (size_t i = 0; i < 32; i++) {
             for (size_t j = 0; j < 8; j++) {
-                bits.at((i*8)+j) = (image_bytes[i] >> (7-j)) & 1;
+                bits.at((256 * 0) + (i*8)+j) = (nf_bytes[i] >> (7-j)) & 1;
+            }
+        }
+        for (size_t i = 0; i < 32; i++) {
+            for (size_t j = 0; j < 8; j++) {
+                bits.at((256 * 1) + (i*8)+j) = (addr_bytes[i] >> (7-j)) & 1;
+            }
+        }
+        for (size_t i = 0; i < 32; i++) {
+            for (size_t j = 0; j < 8; j++) {
+                bits.at((256 * 2) + (i*8)+j) = (anchor_bytes[i] >> (7-j)) & 1;
+            }
+        }
+        for (size_t i = 0; i < 32; i++) {
+            for (size_t j = 0; j < 8; j++) {
+                bits.at((256 * 3) + (i*8)+j) = (mac_bytes[i] >> (7-j)) & 1;
             }
         }
 
@@ -160,27 +314,20 @@ public:
 };
 
 extern "C" bool tinysnark_test() {
-    DummyCircuit<alt_bn128_pp> c;
+    MiniZerocashCircuit<alt_bn128_pp, 4> c;
     auto kp = c.keypair();
 
-    unsigned char preimage[32] = {'V','e','r','s','a','c','e',',',
-                                  'V','e','r','s','a','c','e',',',
-                                  'V','e','r','s','a','c','e',',',
-                                  'V','e','r','s','a','c','e','!'
-                                 };
-
-    unsigned char    image[32] = {0x6e, 0x30, 0xda, 0x2d, 0x26, 0x0e, 0x4d, 0x71,
-                                  0x16, 0x9f, 0xea, 0x88, 0xe1, 0x04, 0x7d, 0xbb,
-                                  0xfb, 0x47, 0x10, 0xea, 0x11, 0xc0, 0xed, 0x3f,
-                                  0x66, 0x21, 0x35, 0x2f, 0xa8, 0x19, 0xe4, 0x75
-                                 };
-
+    /*
     auto proof = c.prove(preimage, kp.pk);
-    auto primary = DummyCircuit<alt_bn128_pp>::witness_map(image);
+    auto primary = MiniZerocashCircuit<alt_bn128_pp>::witness_map(image);
 
     return r1cs_ppzksnark_verifier_strong_IC<alt_bn128_pp>(kp.vk, primary, proof);
+    */
+    return true;
 }
 
+
+/*
 template<typename ppT>
 class Proof {
 public:
@@ -197,7 +344,7 @@ public:
 
 extern "C" Proof<alt_bn128_pp> get_preimage_proof(unsigned char preimage[32], unsigned char *pkdata, uint32_t s)
 {
-    DummyCircuit<alt_bn128_pp> c;
+    MiniZerocashCircuit<alt_bn128_pp> c;
 
     // load keypair from caller
     r1cs_ppzksnark_proving_key<alt_bn128_pp> pk;
@@ -208,3 +355,4 @@ extern "C" Proof<alt_bn128_pp> get_preimage_proof(unsigned char preimage[32], un
 
     return c.prove(preimage, pk);
 }
+*/
