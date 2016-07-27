@@ -444,6 +444,7 @@ extern "C" bool tinysnark_verify(
     uint32_t primary_input_len
 
 ) {
+    try {
     r1cs_ppzksnark_verification_key<alt_bn128_pp> vk;
     {
         std::stringstream ss;
@@ -468,6 +469,44 @@ extern "C" bool tinysnark_verify(
     auto primary = pack_bit_vector_into_field_element_vector<FieldT>(primary_input_bits);
 
     return r1cs_ppzksnark_verifier_strong_IC<alt_bn128_pp>(vk, primary, proof);
+    } catch(...) {
+        return false;
+    }
+}
+
+extern "C" bool generate_proof(
+    unsigned char *sk,
+    unsigned char *nullifier,
+    unsigned char *addr,
+    unsigned char *path_digests,
+    bool *position_bools
+)
+{
+    std::vector<unsigned char> skv(sk, sk+32);
+    std::vector<unsigned char> nfv(nullifier, nullifier+32);
+    std::vector<unsigned char> addrv(addr, addr+32);
+
+    std::vector<std::vector<bool>> digests;
+    for (size_t i = 0; i < 4; i++) {
+        std::vector<bool> bits(256);
+        for (size_t i2 = 0; i2 < 32; i2++) {
+            for (size_t j = 0; j < 8; j++) {
+                bits.at((i2*8)+j) = (path_digests[i * 32 + i2] >> (7-j)) & 1;
+            }
+        }
+        digests.push_back(bits);
+    }
+
+    std::vector<bool> positions(position_bools, position_bools+4);
+
+    MerklePath path(digests, positions);
+
+    MiniZerocashCircuit<alt_bn128_pp, 4> c;
+    auto kp = c.keypair();
+
+    auto proof = c.prove(skv, nfv, addrv, path, kp.pk);
+
+    return true;
 }
 
 extern "C" bool tinysnark_test() {
