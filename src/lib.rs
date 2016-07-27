@@ -14,6 +14,24 @@ mod arith;
 extern "C" {
     fn tinysnark_init();
     fn tinysnark_test() -> bool;
+    fn tinysnark_verify(
+        vk: *const libc::c_uchar,
+        vk_size: libc::uint32_t,
+        proof: *const libc::c_uchar,
+        proof_size: libc::uint32_t,
+        primary: *const libc::c_uchar,
+        primary_size: libc::uint32_t
+    ) -> bool;
+}
+
+pub fn snark_verify(
+    vk: &[u8],
+    proof: &[u8],
+    primary: &[u8]
+) -> bool {
+    initialize();
+
+    unsafe { tinysnark_verify(&vk[0], vk.len() as u32, &proof[0], proof.len() as u32, &primary[0], primary.len() as u32) }
 }
 
 pub fn initialize() {

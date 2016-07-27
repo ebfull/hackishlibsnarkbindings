@@ -9,6 +9,9 @@
 using namespace libsnark;
 using namespace std;
 
+// PADDING
+// 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0
+
 const size_t SNARK_SIZE = 584;
 
 typedef Fr<alt_bn128_pp> FieldT;
@@ -58,6 +61,164 @@ extern "C" FieldT tinysnark_fieldt_from(const char *a) {
 Dummy Circuit
 **/
 
+template<typename FieldT>
+pb_variable_array<FieldT> from_bits(std::vector<bool> bits, pb_variable<FieldT>& ZERO) {
+    pb_variable_array<FieldT> acc;
+
+    for (size_t i = 0; i < bits.size(); i++) {
+        acc.emplace_back(bits[i] ? ONE : ZERO);
+    }
+
+    return acc;
+}
+
+template<typename FieldT>
+class sha256_full_two_to_one_gadget : public gadget<FieldT> {
+public:
+    typedef bit_vector hash_value_type;
+    typedef merkle_authentication_path merkle_authentication_path_type;
+
+    std::shared_ptr<sha256_compression_function_gadget<FieldT> > f1;
+    std::shared_ptr<digest_variable<FieldT>> intermediate_hash;
+    std::shared_ptr<sha256_compression_function_gadget<FieldT> > f2;
+    pb_variable<FieldT> ZERO;
+
+    sha256_full_two_to_one_gadget(protoboard<FieldT> &pb,
+                                 const size_t block_length,
+                                 const block_variable<FieldT> &input_block,
+                                 const digest_variable<FieldT> &output,
+                                 const std::string &annotation_prefix) :
+    gadget<FieldT>(pb, annotation_prefix)
+    {
+        assert(false);
+    }
+
+    sha256_full_two_to_one_gadget(protoboard<FieldT> &pb,
+                                  const digest_variable<FieldT> &left,
+                                  const digest_variable<FieldT> &right,
+                                  const digest_variable<FieldT> &output,
+                                  const std::string &annotation_prefix)
+    : gadget<FieldT>(pb)
+    {
+        ZERO.allocate(pb);
+
+        auto IV = SHA256_default_IV(pb);
+
+        intermediate_hash.reset(new digest_variable<FieldT>(pb, 256, ""));
+
+        pb_variable_array<FieldT> first_block;
+        first_block.insert(first_block.end(), left.bits.begin(), left.bits.end());
+        first_block.insert(first_block.end(), right.bits.begin(), right.bits.end());
+
+        f1.reset(new sha256_compression_function_gadget<FieldT>(
+            pb,
+            IV,
+            first_block,
+            *intermediate_hash,
+        ""));
+
+        // second block
+        pb_variable_array<FieldT> length_padding =
+            from_bits({
+                // padding
+                1,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,0,0,
+                0,0,0,0,0,0,1,0,
+                0,0,0,0,0,0,0,0
+            }, ZERO);
+
+        pb_linear_combination_array<FieldT> IV2(intermediate_hash->bits);
+
+        f2.reset(new sha256_compression_function_gadget<FieldT>(
+            pb,
+            IV2,
+            length_padding,
+            output,
+        ""));
+    }
+
+    void generate_r1cs_constraints(const bool ensure_output_bitness=true)
+    {
+        generate_r1cs_equals_const_constraint<FieldT>(this->pb, ZERO, FieldT::zero(), "ZERO");
+        f1->generate_r1cs_constraints();
+        f2->generate_r1cs_constraints();
+    }
+    void generate_r1cs_witness() {
+        f1->generate_r1cs_witness();
+        f2->generate_r1cs_witness();
+    }
+
+    static size_t get_block_len()
+    {
+        return 512;
+    }
+
+    static size_t get_digest_len()
+    {
+        return 256;
+    }
+};
+
 uint64_t convertVectorToInt(const std::vector<bool>& v) {
     if (v.size() > 64) {
         throw std::length_error ("boolean vector can't be larger than 64 bits");
@@ -105,8 +266,8 @@ public:
     std::shared_ptr<sha256_compression_function_gadget<Fr<ppT>>> cm_hash;
 
     pb_variable_array<Fr<ppT>> positions;
-    std::shared_ptr<merkle_authentication_path_variable<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>> authvars;
-    std::shared_ptr<merkle_tree_check_read_gadget<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>> auth;
+    std::shared_ptr<merkle_authentication_path_variable<Fr<ppT>, sha256_full_two_to_one_gadget<Fr<ppT>>>> authvars;
+    std::shared_ptr<merkle_tree_check_read_gadget<Fr<ppT>, sha256_full_two_to_one_gadget<Fr<ppT>>>> auth;
 
     MiniZerocashCircuit() {
         packed_inputs.allocate(pb, 4 + 1);
@@ -162,10 +323,10 @@ public:
 
         // merkle tree
         positions.allocate(pb, TREEDEPTH);
-        authvars.reset(new merkle_authentication_path_variable<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>(
+        authvars.reset(new merkle_authentication_path_variable<Fr<ppT>, sha256_full_two_to_one_gadget<Fr<ppT>>>(
             pb, TREEDEPTH, "auth"
         ));
-        auth.reset(new merkle_tree_check_read_gadget<Fr<ppT>, sha256_two_to_one_hash_gadget<Fr<ppT>>>(
+        auth.reset(new merkle_tree_check_read_gadget<Fr<ppT>, sha256_full_two_to_one_gadget<Fr<ppT>>>(
             pb,
             TREEDEPTH,
             positions,
@@ -312,6 +473,41 @@ public:
         return pack_bit_vector_into_field_element_vector<Fr<ppT>>(bits);
     }
 };
+
+extern "C" bool tinysnark_verify(
+    unsigned char *vk_bytes,
+    uint32_t vk_size,
+    unsigned char *proof_bytes,
+    uint32_t proof_size,
+    unsigned char *primary_input_bytes,
+    uint32_t primary_input_len
+
+) {
+    r1cs_ppzksnark_verification_key<alt_bn128_pp> vk;
+    {
+        std::stringstream ss;
+        std::string s(vk_bytes, vk_bytes+vk_size);
+        ss.str(s);
+        ss >> vk;
+    }
+    r1cs_ppzksnark_proof<alt_bn128_pp> proof;
+    {
+        std::stringstream ss;
+        std::string s(proof_bytes, proof_bytes+proof_size);
+        ss.str(s);
+        ss >> proof;
+    }
+    std::vector<bool> primary_input_bits(primary_input_len * 8);
+    for (size_t i = 0; i < primary_input_len; i++) {
+        for (size_t j = 0; j < 8; j++) {
+            primary_input_bits.at((256 * 2) + (i*8)+j) = (primary_input_bytes[i] >> (7-j)) & 1;
+        }
+    }
+
+    auto primary = pack_bit_vector_into_field_element_vector<FieldT>(primary_input_bits);
+
+    return r1cs_ppzksnark_verifier_strong_IC<alt_bn128_pp>(vk, primary, proof);
+}
 
 extern "C" bool tinysnark_test() {
     MiniZerocashCircuit<alt_bn128_pp, 4> c;
