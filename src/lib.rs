@@ -13,6 +13,7 @@ mod arith;
 
 extern "C" {
     fn tinysnark_init();
+    fn tinysnark_gen_keypair();
     fn tinysnark_test() -> bool;
     fn tinysnark_verify(
         vk: *const libc::c_uchar,
@@ -30,6 +31,12 @@ extern "C" {
         path: *const libc::c_uchar,
         positions: *const bool
     ) -> [u8; 584];
+}
+
+pub fn gen_keypair() {
+    initialize();
+
+    unsafe { tinysnark_gen_keypair(); }
 }
 
 pub fn genproof(sk: &[u8], nf: &[u8], addr: &[u8], path: &Vec<Vec<u8>>, positions: &[bool]) -> [u8; 584] {

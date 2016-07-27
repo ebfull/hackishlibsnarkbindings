@@ -5,6 +5,8 @@ extern crate rand;
 use sha2::digest::Digest;
 use sha2::sha2::Sha256;
 use rand::{Rng,thread_rng};
+use std::io::Read;
+use std::fs::File;
 
 use tinysnark::*;
 
@@ -61,9 +63,28 @@ fn main() {
     auth_path.push(tree[9].clone());
     auth_path.push(tree[5].clone());
     auth_path.push(tree[3].clone());
+    //auth_path = auth_path.iter().rev().collect();
     
     // positions
     let mut positions = vec![false, false, false, false];
 
     let proof = genproof(&sk, &nf, &addr, &auth_path, &positions);
+
+    // load verifying key
+    let mut vkf = File::open("zoe.vk").unwrap();
+    let mut vk = vec![0; 2000];
+
+    let r = vkf.read_to_end(&mut vk).unwrap();
+
+    // run verifier
+
+    drop(vkf);
+
+    let mut a = vec![];
+    a.extend(&nf);
+    a.extend(&addr);
+    a.extend(&tree[1]);
+    a.extend(&mac);
+
+    assert!(snark_verify(&vk[0..r], &proof[..], &a));
 }

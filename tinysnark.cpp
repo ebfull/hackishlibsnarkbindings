@@ -488,6 +488,26 @@ public:
     }
 };
 
+#include <fstream>
+
+template<typename T>
+T loadFromFile(std::string path) {
+    std::stringstream ss;
+    std::ifstream fh(path, std::ios::binary);
+
+    assert(fh.is_open());
+
+    ss << fh.rdbuf();
+    fh.close();
+
+    ss.rdbuf()->pubseekpos(0, std::ios_base::in);
+
+    T obj;
+    ss >> obj;
+
+    return obj;
+}
+
 extern "C" Proof<alt_bn128_pp> generate_proof(
     unsigned char *sk,
     unsigned char *nullifier,
@@ -516,9 +536,30 @@ extern "C" Proof<alt_bn128_pp> generate_proof(
     MerklePath path(digests, positions);
 
     MiniZerocashCircuit<alt_bn128_pp, 4> c;
+    
+    auto pk = loadFromFile<r1cs_ppzksnark_proving_key<alt_bn128_pp>>("zoe.pk");
+
+    return Proof<alt_bn128_pp>(c.prove(skv, nfv, addrv, path, pk));
+}
+
+template<typename T>
+void saveToFile(std::string path, T& obj) {
+    std::stringstream ss;
+    ss << obj;
+    std::ofstream fh;
+    fh.open(path, std::ios::binary);
+    ss.rdbuf()->pubseekpos(0, std::ios_base::out);
+    fh << ss.rdbuf();
+    fh.flush();
+    fh.close();
+}
+
+extern "C" void tinysnark_gen_keypair() {
+    MiniZerocashCircuit<alt_bn128_pp, 4> c;
     auto kp = c.keypair();
 
-    return Proof<alt_bn128_pp>(c.prove(skv, nfv, addrv, path, kp.pk));
+    saveToFile("zoe.pk", kp.pk);
+    saveToFile("zoe.vk", kp.vk);
 }
 
 extern "C" bool tinysnark_test() {
