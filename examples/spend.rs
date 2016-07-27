@@ -72,7 +72,7 @@ fn main() {
 
     // load verifying key
     let mut vkf = File::open("zoe.vk").unwrap();
-    let mut vk = vec![0; 2000];
+    let mut vk = vec![];
 
     let r = vkf.read_to_end(&mut vk).unwrap();
 
