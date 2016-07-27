@@ -474,7 +474,21 @@ extern "C" bool tinysnark_verify(
     }
 }
 
-extern "C" bool generate_proof(
+template<typename ppT>
+class Proof {
+public:
+    unsigned char proofdata[SNARK_SIZE];
+
+    Proof(const r1cs_ppzksnark_proof<ppT> &proof) {
+        std::stringstream ss;
+        ss << proof;
+        std::string serialized_proof = ss.str();
+        assert(serialized_proof.size() == SNARK_SIZE);
+        memcpy(&proofdata[0], &serialized_proof[0], SNARK_SIZE);
+    }
+};
+
+extern "C" Proof<alt_bn128_pp> generate_proof(
     unsigned char *sk,
     unsigned char *nullifier,
     unsigned char *addr,
@@ -504,9 +518,7 @@ extern "C" bool generate_proof(
     MiniZerocashCircuit<alt_bn128_pp, 4> c;
     auto kp = c.keypair();
 
-    auto proof = c.prove(skv, nfv, addrv, path, kp.pk);
-
-    return true;
+    return Proof<alt_bn128_pp>(c.prove(skv, nfv, addrv, path, kp.pk));
 }
 
 extern "C" bool tinysnark_test() {
@@ -544,23 +556,7 @@ extern "C" bool tinysnark_test() {
     */
     return true;
 }
-
-
 /*
-template<typename ppT>
-class Proof {
-public:
-    unsigned char proofdata[SNARK_SIZE];
-
-    Proof(const r1cs_ppzksnark_proof<ppT> &proof) {
-        std::stringstream ss;
-        ss << proof;
-        std::string serialized_proof = ss.str();
-        assert(serialized_proof.size() == SNARK_SIZE);
-        memcpy(&proofdata[0], &serialized_proof[0], SNARK_SIZE);
-    }
-};
-
 extern "C" Proof<alt_bn128_pp> get_preimage_proof(unsigned char preimage[32], unsigned char *pkdata, uint32_t s)
 {
     MiniZerocashCircuit<alt_bn128_pp> c;

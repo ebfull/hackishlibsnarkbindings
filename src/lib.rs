@@ -29,10 +29,10 @@ extern "C" {
         addr: *const libc::c_uchar,
         path: *const libc::c_uchar,
         positions: *const bool
-    ) -> bool;
+    ) -> [u8; 584];
 }
 
-pub fn genproof(sk: &[u8], nf: &[u8], addr: &[u8], path: &Vec<Vec<u8>>, positions: &[bool]) -> bool {
+pub fn genproof(sk: &[u8], nf: &[u8], addr: &[u8], path: &Vec<Vec<u8>>, positions: &[bool]) -> [u8; 584] {
     initialize();
 
     assert_eq!(path.len(), 4);

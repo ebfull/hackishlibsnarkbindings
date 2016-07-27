@@ -65,5 +65,5 @@ fn main() {
     // positions
     let mut positions = vec![false, false, false, false];
 
-    assert!(genproof(&sk, &nf, &addr, &auth_path, &positions));
+    let proof = genproof(&sk, &nf, &addr, &auth_path, &positions);
 }
