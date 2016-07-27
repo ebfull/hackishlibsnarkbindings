@@ -59,10 +59,10 @@ fn main() {
 
     // Witness the first element
     let mut auth_path = vec![];
-    auth_path.push(tree[17].clone());
-    auth_path.push(tree[9].clone());
-    auth_path.push(tree[5].clone());
     auth_path.push(tree[3].clone());
+    auth_path.push(tree[5].clone());
+    auth_path.push(tree[9].clone());
+    auth_path.push(tree[17].clone());
     //auth_path = auth_path.iter().rev().collect();
     
     // positions
