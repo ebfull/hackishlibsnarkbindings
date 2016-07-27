@@ -90,30 +90,16 @@ public:
                                  const std::string &annotation_prefix) :
     gadget<FieldT>(pb, annotation_prefix)
     {
-        assert(false);
-    }
-
-    sha256_full_two_to_one_gadget(protoboard<FieldT> &pb,
-                                  const digest_variable<FieldT> &left,
-                                  const digest_variable<FieldT> &right,
-                                  const digest_variable<FieldT> &output,
-                                  const std::string &annotation_prefix)
-    : gadget<FieldT>(pb)
-    {
         ZERO.allocate(pb);
 
         auto IV = SHA256_default_IV(pb);
 
         intermediate_hash.reset(new digest_variable<FieldT>(pb, 256, ""));
 
-        pb_variable_array<FieldT> first_block;
-        first_block.insert(first_block.end(), left.bits.begin(), left.bits.end());
-        first_block.insert(first_block.end(), right.bits.begin(), right.bits.end());
-
         f1.reset(new sha256_compression_function_gadget<FieldT>(
             pb,
             IV,
-            first_block,
+            input_block.bits,
             *intermediate_hash,
         ""));
 
@@ -197,6 +183,20 @@ public:
         ""));
     }
 
+    sha256_full_two_to_one_gadget(protoboard<FieldT> &pb,
+                                  const digest_variable<FieldT> &left,
+                                  const digest_variable<FieldT> &right,
+                                  const digest_variable<FieldT> &output,
+                                  const std::string &annotation_prefix)
+    : sha256_full_two_to_one_gadget(pb,
+                                    512,
+                                    block_variable<FieldT>(pb, {left.bits, right.bits}, ""),
+                                    output,
+                                    annotation_prefix)
+    {
+
+    }
+
     void generate_r1cs_constraints(const bool ensure_output_bitness=true)
     {
         generate_r1cs_equals_const_constraint<FieldT>(this->pb, ZERO, FieldT::zero(), "ZERO");
@@ -240,6 +240,16 @@ public:
     std::vector<bool> index;
 
     MerklePath() { }
+    MerklePath(size_t i) {
+        for (size_t j = 0; j < i; j++) {
+            index.push_back(0);
+
+            std::vector<bool> v(256, 0);
+            assert(v.size() == 256);
+
+            authentication_path.push_back(v);
+        }
+    }
 
     MerklePath(std::vector<std::vector<bool>> authentication_path, std::vector<bool> index)
     : authentication_path(authentication_path), index(index) { }
@@ -259,11 +269,11 @@ public:
     std::shared_ptr<digest_variable<Fr<ppT>>> anchor;
     std::shared_ptr<digest_variable<Fr<ppT>>> mac;
 
-    pb_variable_array<Fr<ppT>> sk;
+    std::shared_ptr<digest_variable<Fr<ppT>>> sk;
     std::shared_ptr<digest_variable<Fr<ppT>>> cm;
 
-    std::shared_ptr<sha256_compression_function_gadget<Fr<ppT>>> mac_hash;
-    std::shared_ptr<sha256_compression_function_gadget<Fr<ppT>>> cm_hash;
+    std::shared_ptr<sha256_full_two_to_one_gadget<Fr<ppT>>> mac_hash;
+    std::shared_ptr<sha256_full_two_to_one_gadget<Fr<ppT>>> cm_hash;
 
     pb_variable_array<Fr<ppT>> positions;
     std::shared_ptr<merkle_authentication_path_variable<Fr<ppT>, sha256_full_two_to_one_gadget<Fr<ppT>>>> authvars;
@@ -294,32 +304,18 @@ public:
         ));
 
         // AUTHENTICATION
-        sk.allocate(pb, 256);
-
-        auto IV = SHA256_default_IV(pb);
+        sk.reset(new digest_variable<Fr<ppT>>(pb, 256, "sk"));
 
         // Note commitment
-        pb_variable_array<Fr<ppT>> cm_hash_contents;
-        cm_hash_contents.insert(cm_hash_contents.begin(), sk.begin(), sk.end());
-        cm_hash_contents.insert(cm_hash_contents.begin(), nullifier->bits.begin(), nullifier->bits.end());
-
         cm.reset(new digest_variable<Fr<ppT>>(pb, 256, "cm"));
-        cm_hash.reset(new sha256_compression_function_gadget<Fr<ppT>>(pb,
-                                                                      IV,
-                                                                      cm_hash_contents,
-                                                                      *cm,
-                                                                      "cm_hash"));
+        cm_hash.reset(new sha256_full_two_to_one_gadget<Fr<ppT>>(
+            pb, *sk, *nullifier, *cm, "cm_hash"
+        ));
 
         // MAC
-        pb_variable_array<Fr<ppT>> mac_hash_contents;
-        mac_hash_contents.insert(mac_hash_contents.begin(), addr->bits.begin(), addr->bits.end());
-        mac_hash_contents.insert(mac_hash_contents.begin(), sk.begin(), sk.end());
-
-        mac_hash.reset(new sha256_compression_function_gadget<Fr<ppT>>(pb,
-                                                                      IV,
-                                                                      mac_hash_contents,
-                                                                      *mac,
-                                                                      "mac_hash"));
+        mac_hash.reset(new sha256_full_two_to_one_gadget<Fr<ppT>>(
+            pb, *addr, *sk, *mac, "mac_hash"
+        ));
 
         // merkle tree
         positions.allocate(pb, TREEDEPTH);
@@ -341,10 +337,8 @@ public:
         unpacker->generate_r1cs_constraints(false);
         generate_r1cs_equals_const_constraint<Fr<ppT>>(pb, ZERO, Fr<ppT>::zero(), "ZERO");
 
-        for (size_t i = 0; i < 256; i++) {
-            generate_boolean_r1cs_constraint<Fr<ppT>>(pb, sk[i]);
-        }
-
+        addr->generate_r1cs_constraints();
+        sk->generate_r1cs_constraints();
         cm_hash->generate_r1cs_constraints();
         mac_hash->generate_r1cs_constraints();
 
@@ -383,7 +377,7 @@ public:
             }
 
             for (size_t i = 0; i < 256; i++) {
-                pb.val(sk[i]) = bits[i] ? Fr<ppT>::one() : Fr<ppT>::zero();
+                pb.val(sk->bits[i]) = bits[i] ? Fr<ppT>::one() : Fr<ppT>::zero();
             }
         }
 
@@ -427,6 +421,9 @@ public:
             auth->generate_r1cs_witness();
         }
 
+        // unpack
+        unpacker->generate_r1cs_witness_from_bits();
+
         assert(pb.is_satisfied());
 
         r1cs_ppzksnark_primary_input<ppT> primary_input = pb.primary_input();
@@ -435,42 +432,6 @@ public:
         pb.constraint_system.swap_AB_if_beneficial();
 
         return r1cs_ppzksnark_prover<ppT>(pk, primary_input, aux_input, pb.constraint_system);
-    }
-
-    static vector<Fr<ppT>> witness_map(
-        std::vector<unsigned char> nf_bytes,
-        std::vector<unsigned char> addr_bytes,
-        std::vector<unsigned char> anchor_bytes,
-        std::vector<unsigned char> mac_bytes
-    ) {
-        assert(nf_bytes.size() == 32);
-        assert(addr_bytes.size() == 32);
-        assert(anchor_bytes.size() == 32);
-        assert(mac_bytes.size() == 32);
-
-        vector<bool> bits(256 * 4);
-        for (size_t i = 0; i < 32; i++) {
-            for (size_t j = 0; j < 8; j++) {
-                bits.at((256 * 0) + (i*8)+j) = (nf_bytes[i] >> (7-j)) & 1;
-            }
-        }
-        for (size_t i = 0; i < 32; i++) {
-            for (size_t j = 0; j < 8; j++) {
-                bits.at((256 * 1) + (i*8)+j) = (addr_bytes[i] >> (7-j)) & 1;
-            }
-        }
-        for (size_t i = 0; i < 32; i++) {
-            for (size_t j = 0; j < 8; j++) {
-                bits.at((256 * 2) + (i*8)+j) = (anchor_bytes[i] >> (7-j)) & 1;
-            }
-        }
-        for (size_t i = 0; i < 32; i++) {
-            for (size_t j = 0; j < 8; j++) {
-                bits.at((256 * 3) + (i*8)+j) = (mac_bytes[i] >> (7-j)) & 1;
-            }
-        }
-
-        return pack_bit_vector_into_field_element_vector<Fr<ppT>>(bits);
     }
 };
 
@@ -512,6 +473,29 @@ extern "C" bool tinysnark_verify(
 extern "C" bool tinysnark_test() {
     MiniZerocashCircuit<alt_bn128_pp, 4> c;
     auto kp = c.keypair();
+
+    std::vector<unsigned char> sk = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+    };
+    std::vector<unsigned char> serial = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+    };
+    std::vector<unsigned char> addr = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff
+    };
+
+    MerklePath path(4);
+
+    auto proof = c.prove(sk, serial, addr, path, kp.pk);
 
     /*
     auto proof = c.prove(preimage, kp.pk);
