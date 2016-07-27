@@ -452,6 +452,7 @@ extern "C" bool tinysnark_verify(
         ss.str(s);
         ss >> vk;
     }
+
     r1cs_ppzksnark_proof<alt_bn128_pp> proof;
     {
         std::stringstream ss;
@@ -459,10 +460,11 @@ extern "C" bool tinysnark_verify(
         ss.str(s);
         ss >> proof;
     }
+
     std::vector<bool> primary_input_bits(primary_input_len * 8);
     for (size_t i = 0; i < primary_input_len; i++) {
         for (size_t j = 0; j < 8; j++) {
-            primary_input_bits.at((256 * 2) + (i*8)+j) = (primary_input_bytes[i] >> (7-j)) & 1;
+            primary_input_bits.at((i*8)+j) = (primary_input_bytes[i] >> (7-j)) & 1;
         }
     }
 

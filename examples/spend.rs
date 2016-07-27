@@ -74,7 +74,7 @@ fn main() {
     let mut vkf = File::open("zoe.vk").unwrap();
     let mut vk = vec![];
 
-    let r = vkf.read_to_end(&mut vk).unwrap();
+    vkf.read_to_end(&mut vk).unwrap();
 
     // run verifier
 
@@ -86,5 +86,5 @@ fn main() {
     a.extend(&tree[1]);
     a.extend(&mac);
 
-    assert!(snark_verify(&vk[0..r], &proof[..], &a));
+    assert!(snark_verify(&vk, &proof[..], &a));
 }
