@@ -1,4 +1,4 @@
-extern crate tinysnark;
+extern crate hackishlibsnarkbindings;
 extern crate sha2;
 extern crate rand;
 
@@ -8,7 +8,7 @@ use rand::{Rng,thread_rng};
 use std::io::Read;
 use std::fs::File;
 
-use tinysnark::*;
+use hackishlibsnarkbindings::*;
 
 fn get_path(at: usize, tree: &[Vec<u8>]) {
     unimplemented!()

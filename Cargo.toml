@@ -2,11 +2,11 @@
 authors = ["Sean Bowe <ewillbefull@gmail.com>"]
 build = "build.rs"
 description = "Tiny libsnark bindings"
-documentation = "https://github.com/ebfull/tinysnark"
-homepage = "https://github.com/ebfull/tinysnark"
+documentation = "https://github.com/ebfull/hackishlibsnarkbindings"
+homepage = "https://github.com/ebfull/hackishlibsnarkbindings"
 license = "MIT"
-name = "tinysnark"
-repository = "https://github.com/ebfull/tinysnark"
+name = "hackishlibsnarkbindings"
+repository = "https://github.com/ebfull/hackishlibsnarkbindings"
 version = "0.1.0"
 
 [build-dependencies]

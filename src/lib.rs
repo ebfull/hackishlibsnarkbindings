@@ -12,10 +12,10 @@ lazy_static! {
 mod arith;
 
 extern "C" {
-    fn tinysnark_init();
-    fn tinysnark_gen_keypair();
-    fn tinysnark_test() -> bool;
-    fn tinysnark_verify(
+    fn hackishlibsnarkbindings_init();
+    fn hackishlibsnarkbindings_gen_keypair();
+    fn hackishlibsnarkbindings_test() -> bool;
+    fn hackishlibsnarkbindings_verify(
         vk: *const libc::c_uchar,
         vk_size: libc::uint32_t,
         proof: *const libc::c_uchar,
@@ -36,7 +36,7 @@ extern "C" {
 pub fn gen_keypair() {
     initialize();
 
-    unsafe { tinysnark_gen_keypair(); }
+    unsafe { hackishlibsnarkbindings_gen_keypair(); }
 }
 
 pub fn genproof(sk: &[u8], nf: &[u8], addr: &[u8], path: &Vec<Vec<u8>>, positions: &[bool]) -> [u8; 584] {
@@ -61,14 +61,14 @@ pub fn snark_verify(
 ) -> bool {
     initialize();
 
-    unsafe { tinysnark_verify(&vk[0], vk.len() as u32, &proof[0], proof.len() as u32, &primary[0], primary.len() as u32) }
+    unsafe { hackishlibsnarkbindings_verify(&vk[0], vk.len() as u32, &proof[0], proof.len() as u32, &primary[0], primary.len() as u32) }
 }
 
 pub fn initialize() {
     let mut l = INIT_LOCK.lock().unwrap();
 
     if !*l {
-        unsafe { tinysnark_init(); }
+        unsafe { hackishlibsnarkbindings_init(); }
         *l = true;
     }
 }
@@ -95,5 +95,5 @@ fn test_from() {
 fn test_dummy_circuit() {
     initialize();
 
-    assert!(unsafe { tinysnark_test() });
+    assert!(unsafe { hackishlibsnarkbindings_test() });
 }

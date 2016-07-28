@@ -1,6 +1,6 @@
-extern crate tinysnark;
+extern crate hackishlibsnarkbindings;
 
-use tinysnark::*;
+use hackishlibsnarkbindings::*;
 
 fn main() {
 	gen_keypair();

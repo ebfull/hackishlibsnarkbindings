@@ -16,44 +16,44 @@ const size_t SNARK_SIZE = 584;
 
 typedef Fr<alt_bn128_pp> FieldT;
 
-extern "C" void tinysnark_init() {
+extern "C" void hackishlibsnarkbindings_init() {
     assert(sodium_init() != -1);
     alt_bn128_pp::init_public_params();
 }
 
-extern "C" FieldT tinysnark_fieldt_zero() {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_zero() {
     return FieldT::zero();
 }
 
-extern "C" FieldT tinysnark_fieldt_one() {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_one() {
     return FieldT::one();
 }
 
-extern "C" FieldT tinysnark_fieldt_random() {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_random() {
     return FieldT::random_element();
 }
 
-extern "C" FieldT tinysnark_fieldt_mul(const FieldT *a, const FieldT *b) {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_mul(const FieldT *a, const FieldT *b) {
     return *a * *b;
 }
 
-extern "C" FieldT tinysnark_fieldt_add(const FieldT *a, const FieldT *b) {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_add(const FieldT *a, const FieldT *b) {
     return *a + *b;
 }
 
-extern "C" FieldT tinysnark_fieldt_sub(const FieldT *a, const FieldT *b) {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_sub(const FieldT *a, const FieldT *b) {
     return *a - *b;
 }
 
-extern "C" FieldT tinysnark_fieldt_neg(const FieldT *a) {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_neg(const FieldT *a) {
     return -(*a);
 }
 
-extern "C" FieldT tinysnark_fieldt_inverse(const FieldT *a) {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_inverse(const FieldT *a) {
     return a->inverse();
 }
 
-extern "C" FieldT tinysnark_fieldt_from(const char *a) {
+extern "C" FieldT hackishlibsnarkbindings_fieldt_from(const char *a) {
     return FieldT(a);
 }
 
@@ -435,7 +435,7 @@ public:
     }
 };
 
-extern "C" bool tinysnark_verify(
+extern "C" bool hackishlibsnarkbindings_verify(
     unsigned char *vk_bytes,
     uint32_t vk_size,
     unsigned char *proof_bytes,
@@ -556,7 +556,7 @@ void saveToFile(std::string path, T& obj) {
     fh.close();
 }
 
-extern "C" void tinysnark_gen_keypair() {
+extern "C" void hackishlibsnarkbindings_gen_keypair() {
     MiniZerocashCircuit<alt_bn128_pp, 4> c;
     auto kp = c.keypair();
 
@@ -564,7 +564,7 @@ extern "C" void tinysnark_gen_keypair() {
     saveToFile("zoe.vk", kp.vk);
 }
 
-extern "C" bool tinysnark_test() {
+extern "C" bool hackishlibsnarkbindings_test() {
     MiniZerocashCircuit<alt_bn128_pp, 4> c;
     auto kp = c.keypair();
 

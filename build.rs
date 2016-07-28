@@ -24,8 +24,8 @@ fn main() {
         .file("libsnark/src/algebra/curves/alt_bn128/alt_bn128_pp.cpp")
         .file("libsnark/src/common/utils.cpp")
         .file("libsnark/src/common/profiling.cpp")
-        .file("tinysnark.cpp")
+        .file("hackishlibsnarkbindings.cpp")
     ;
     
-    cfg.compile("libtinysnark.a");
+    cfg.compile("libhackishlibsnarkbindings.a");
 }
